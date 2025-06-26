@@ -1,6 +1,5 @@
 import type{ PoolClient, PoolConfig, Pool } from "pg";
 import pg from "pg";
-import { main, Operation, spawn, until } from "effection";
 import { Buffer } from "node:buffer";
 
 const getConnection = (creds: PoolConfig) => {
@@ -28,18 +27,16 @@ const conn = getConnection({
   database: "postgres",
 });
 
-
-function* sleep(ms: number) {
-  yield* until(new Promise((resolve) => setTimeout(resolve, ms)));
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
-function* writter(pool): Operation<unknown> {
+async function writter(pool) {
   console.log("Writter started");
   let counter = 0;
   while (true) {
     counter++;
-    yield* until(pool.query(`
+    await pool.query(`
       INSERT INTO blocks(block_height, ver, main_chain_block_hash, seed, ms_timestamp, block_hash)
       VALUES ($1, $2, $3, $4, $5, NULL)
       ON CONFLICT (block_height)
@@ -49,52 +46,40 @@ function* writter(pool): Operation<unknown> {
       main_chain_block_hash = EXCLUDED.main_chain_block_hash,
       seed = EXCLUDED.seed,
       ms_timestamp = EXCLUDED.ms_timestamp,
-      block_hash = EXCLUDED.block_hash;`, [counter, 1, Buffer.from("013d7d16d7ad4fefb61bd95b765c8ceb"), "seed", new Date().toISOString()]));
-    yield* sleep(Math.random() * 10 | 0);
-    
+      block_hash = EXCLUDED.block_hash;`, [counter, 1, Buffer.from("013d7d16d7ad4fefb61bd95b765c8ceb"), "seed", new Date().toISOString()]);
+    await sleep(Math.random() * 10 | 0);
+
     const randomBlockHash = 
       "0x" +
       Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16))
         .join("")
 
-    yield* until(pool.query(`
+    await pool.query(`
       UPDATE blocks
       SET
       block_hash = $1
       WHERE block_height = $2;
-    `, [Buffer.from(randomBlockHash), counter]));
+    `, [Buffer.from(randomBlockHash), counter]);
     console.log("Block written", counter);
   }
 }
 
-function* reader(pool): Operation<unknown> {
+async function reader(pool) {
   console.log("Reader started");
   while (true) {
-    const row = yield* until(pool.query(`
+    const row = await pool.query(`
       SELECT * FROM blocks
       WHERE block_hash IS NOT NULL
       ORDER BY block_height DESC
       LIMIT 1;
-    `));
+    `);
     console.log("Block read", row.rows[0].block_height);
-    yield* sleep(Math.random() * 10 | 0);
+    await sleep(Math.random() * 10 | 0);
   }
 }
 
-await main(function* () {
-  console.log("Main started");
-
-  yield* spawn(function* () {
-    yield* writter(conn);
-  });
-  yield* spawn(function* () {
-    // comment this line and error does not happen
-    yield* reader(conn);
-  });
-
-  while (true) {
-    yield* sleep(1000);
-  }
-});
-
-// await conn.end();
+writter(conn);
+reader(conn);
+while (true) {
+  await sleep(1000);
+}
