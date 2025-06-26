@@ -1,6 +1,8 @@
+# Run
+```
 deno install --allow-scripts
 deno task dev
-
+```
 
 Error will look like this, but will not crash.
 
